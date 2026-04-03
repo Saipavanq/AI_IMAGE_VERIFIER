@@ -105,10 +105,15 @@ def resolve_target_layer(model_name: str, model: nn.Module) -> tuple[nn.Module, 
             raise ValueError("Expected a ResNet-like model with `.layer4` for CNN baseline.")
         return model.layer4, "layer4"
 
-    if model_name == "efficientnet":
+    if model_name in ("efficientnet", "efficientnetv2"):
         if not hasattr(model, "conv_head"):
             raise ValueError("Expected EfficientNet-like model with `.conv_head`.")
         return model.conv_head, "conv_head"
+
+    if model_name == "convnext":
+        if not hasattr(model, "stages"):
+            raise ValueError("Expected ConvNeXt-like model with `.stages`.")
+        return model.stages[-1], "stages[-1]"
 
     if model_name == "vit":
         # Use the last block output tokens (includes patch tokens + cls token); Grad-CAM uses conv feature maps,

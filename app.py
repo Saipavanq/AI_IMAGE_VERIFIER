@@ -21,6 +21,7 @@ if str(SRC) not in sys.path:
 from artifact_features import compute_artifact_signals, explain_signals  # noqa: E402
 from dataset import build_transforms, timm_model_name  # noqa: E402
 from gradcam import overlay_heatmap_on_image, run_gradcam_for_model  # noqa: E402
+from inference_utils import predict_proba_tta_single  # noqa: E402
 from models import build_model, list_models  # noqa: E402
 from utils import get_device  # noqa: E402
 
@@ -55,6 +56,7 @@ def main() -> None:
     with st.sidebar:
         model_name = st.selectbox("Model", list(list_models()))
         checkpoint = st.text_input("Checkpoint path", value=str(ROOT / "models" / f"best_{model_name}.pth"))
+        use_tta = st.checkbox("Test-time augmentation (TTA)", value=True, help="Average prediction with a horizontal flip — usually more accurate.")
 
     uploaded = st.file_uploader("Image", type=["png", "jpg", "jpeg", "webp", "bmp"])
     if not uploaded:
@@ -68,9 +70,11 @@ def main() -> None:
     tfm = build_transforms(model_name=model_name, is_training=False)
     x = tfm(pil).unsqueeze(0).to(device)
 
-    with torch.no_grad():
-        logits = model(x)
-        prob = torch.softmax(logits, dim=1)[0].detach().float().cpu().numpy()
+    amp = device.type == "cuda"
+    prob_t = predict_proba_tta_single(
+        model, pil, tfm, device, amp=amp, use_tta=use_tta
+    )
+    prob = prob_t.detach().float().cpu().numpy()
 
     pred_idx = int(np.argmax(prob))
     pred = [k for k, v in class_to_idx.items() if v == pred_idx][0]

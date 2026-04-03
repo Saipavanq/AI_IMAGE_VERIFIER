@@ -30,7 +30,11 @@ class BinaryMetrics:
 
 
 def compute_binary_metrics(y_true: np.ndarray, y_score_fake: np.ndarray, threshold: float = 0.5) -> BinaryMetrics:
-    """Compute metrics for label 1 = FAKE (AI-generated), label 0 = REAL."""
+    """Binary classification metrics with positive class = FAKE.
+
+    Expects **canonical** labels: 0 = REAL, 1 = FAKE (AI-generated), and
+    ``y_score_fake`` = estimated P(FAKE). (Do not pass raw ImageFolder indices here.)
+    """
     y_true = np.asarray(y_true).astype(int)
     y_score_fake = np.asarray(y_score_fake).astype(float)
 

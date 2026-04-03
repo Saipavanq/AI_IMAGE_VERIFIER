@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import timm
 import torch.nn as nn
 
-SUPPORTED_MODELS = ("cnn", "efficientnet", "vit")
+SUPPORTED_MODELS = ("cnn", "efficientnet", "efficientnetv2", "convnext", "vit")
 
 
 def list_models() -> tuple[str, ...]:
@@ -22,11 +22,14 @@ class ModelSpec:
 
 
 _MODEL_SPECS: dict[str, ModelSpec] = {
-    # Fast, strong baseline CNN.
+    # Fast baseline.
     "cnn": ModelSpec("resnet18", pretrained=True),
-    # Strong transfer-learning backbone (timm default input size is typically 320x320).
+    # Strong classic EfficientNet (often 320px input in timm).
     "efficientnet": ModelSpec("efficientnet_b4", pretrained=True),
-    # ViT-B/16 @ 224 (matches common hackathon constraints).
+    # Newer ImageNet-21k style V2 mid — often better generalization than B4 alone.
+    "efficientnetv2": ModelSpec("efficientnetv2_rw_m", pretrained=True),
+    # Modern hierarchical conv net — strong accuracy / robustness tradeoff.
+    "convnext": ModelSpec("convnext_base", pretrained=True),
     "vit": ModelSpec("vit_base_patch16_224", pretrained=True),
 }
 

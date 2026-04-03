@@ -33,12 +33,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--val_ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--tta",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Average softmax with horizontal flip (often +1–2% accuracy)",
+    )
     parser.add_argument("--out_dir", type=str, default="outputs")
     return parser.parse_args()
 
 
 @torch.no_grad()
-def collect_predictions(model: nn.Module, loader: DataLoader, device: torch.device, *, amp: bool) -> tuple[np.ndarray, np.ndarray]:
+def collect_predictions(
+    model: nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+    *,
+    amp: bool,
+    fake_idx: int,
+    tta: bool,
+) -> tuple[np.ndarray, np.ndarray]:
     model.eval()
     ys: list[np.ndarray] = []
     ps: list[np.ndarray] = []
@@ -49,8 +63,14 @@ def collect_predictions(model: nn.Module, loader: DataLoader, device: torch.devi
 
         with autocast(enabled=amp and device.type == "cuda"):
             logits = model(x)
+            if tta:
+                xf = torch.flip(x, dims=[3])
+                logits2 = model(xf)
+                probs = 0.5 * (torch.softmax(logits, dim=1) + torch.softmax(logits2, dim=1))
+            else:
+                probs = torch.softmax(logits, dim=1)
 
-        prob_fake = torch.softmax(logits, dim=1)[:, 1].detach().float().cpu().numpy()
+        prob_fake = probs[:, fake_idx].detach().float().cpu().numpy()
         ys.append(y.detach().cpu().numpy())
         ps.append(prob_fake)
 
@@ -88,9 +108,13 @@ def main() -> None:
     model.load_state_dict(ckpt["state_dict"])
     model.to(device)
 
-    y_true, y_score = collect_predictions(model, loader, device, amp=amp)
+    fake_idx = int(class_to_idx["FAKE"])
+    y_true_raw, y_score = collect_predictions(
+        model, loader, device, amp=amp, fake_idx=fake_idx, tta=bool(args.tta)
+    )
+    # Canonical binary labels for metrics: 0 = REAL, 1 = FAKE (independent of folder sort order).
+    y_true = (y_true_raw == fake_idx).astype(np.int64)
 
-    # Metrics assume label 1 == FAKE
     metrics = compute_binary_metrics(y_true, y_score, threshold=0.5)
 
     out_dir = ensure_dir(Path(args.out_dir))
@@ -111,7 +135,7 @@ def main() -> None:
         },
     )
 
-    # Confusion matrix plot (normalized)
+    # Confusion matrix: rows/cols are canonical REAL=0, FAKE=1
     y_pred = (y_score >= 0.5).astype(int)
     cm = np.zeros((2, 2), dtype=np.int64)
     for t, p in zip(y_true.tolist(), y_pred.tolist()):

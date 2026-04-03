@@ -13,6 +13,7 @@ import cv2
 from PIL import Image
 from timm.data import resolve_data_config
 from torch.cuda.amp import autocast
+from torchvision.datasets import ImageFolder
 from tqdm import tqdm
 
 from artifact_features import compute_artifact_signals, explain_signals

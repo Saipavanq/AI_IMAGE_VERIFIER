@@ -37,8 +37,18 @@ def _assert_imagefolder(root: Path) -> None:
         raise FileNotFoundError(f"No class subfolders found under: {root}")
 
 
-def build_transforms(*, model_name: str, is_training: bool) -> T.Compose:
-    """Build input transforms using timm's per-model preprocessing defaults."""
+def build_transforms(
+    *,
+    model_name: str,
+    is_training: bool,
+    aug_strength: str = "default",
+) -> T.Compose:
+    """Build input transforms using timm's per-model preprocessing defaults.
+
+    ``aug_strength``:
+    - ``default``: light crop + jitter (fast).
+    - ``strong``: RandAugment + erasing + wider scale — better generalization when you train long enough.
+    """
     # We only need cfg fields (mean/std/crop/interpolation); the model weights are irrelevant here.
     m = timm.create_model(timm_model_name(model_name), pretrained=False)
     cfg = resolve_data_config(m.pretrained_cfg, model=m)
@@ -63,6 +73,18 @@ def build_transforms(*, model_name: str, is_training: bool) -> T.Compose:
         size = h
 
     if is_training:
+        if aug_strength == "strong":
+            return T.Compose(
+                [
+                    T.RandomResizedCrop(size, scale=(0.5, 1.0), interpolation=interp),
+                    T.RandomHorizontalFlip(),
+                    T.RandAugment(num_ops=2, magnitude=9, interpolation=interp),
+                    T.ColorJitter(brightness=0.15, contrast=0.15, saturation=0.12, hue=0.04),
+                    T.ToTensor(),
+                    T.RandomErasing(p=0.25, scale=(0.02, 0.15)),
+                    T.Normalize(mean=mean, std=std),
+                ]
+            )
         return T.Compose(
             [
                 T.RandomResizedCrop(size, scale=(0.7, 1.0), interpolation=interp),
@@ -113,12 +135,13 @@ def build_dataloaders(
     num_workers: int,
     val_ratio: float,
     seed: int,
+    aug_strength: str = "default",
 ) -> tuple[DataLoader, DataLoader, DataLoader | None, dict[str, str]]:
     """Create train/val/test loaders from a CIFAKE-style folder layout."""
     roots = default_data_roots(data_root)
 
     _assert_imagefolder(roots.train)
-    train_tf = build_transforms(model_name=model_name, is_training=True)
+    train_tf = build_transforms(model_name=model_name, is_training=True, aug_strength=aug_strength)
     eval_tf = build_transforms(model_name=model_name, is_training=False)
 
     train_ds = ImageFolder(str(roots.train), transform=train_tf)
