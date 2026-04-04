@@ -1,7 +1,6 @@
 outputs/gradcam/
 outputs/*.png
 outputs/*.json
-models/*.pth
 data/raw/
 data/processed/
 __pycache__/
